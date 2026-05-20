@@ -116,8 +116,14 @@ if [ "$MODE" = "paperless-api" ]; then
     magick "$WORKDIR"/page-*.tiff "$WORKDIR/$FILENAME.pdf"
 
     echo "Uploading to Paperless..."
+    COOKIE_JAR="$WORKDIR/cookies.txt"
+    curl -sc "$COOKIE_JAR" -H "Authorization: Token $PAPERLESS_TOKEN" \
+        "$PAPERLESS_URL/api/" > /dev/null 2>&1
+    CSRF=$(grep csrftoken "$COOKIE_JAR" 2>/dev/null | awk '{print $NF}')
     RESPONSE=$(curl -sk -w "\n%{http_code}" \
+        -b "$COOKIE_JAR" \
         -H "Authorization: Token $PAPERLESS_TOKEN" \
+        ${CSRF:+-H "X-CSRFToken: $CSRF"} \
         -F "document=@$WORKDIR/$FILENAME.pdf" \
         -F "created=$(date '+%Y-%m-%d')" \
         "$PAPERLESS_URL/api/documents/post_document/")
