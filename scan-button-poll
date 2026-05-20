@@ -22,12 +22,13 @@ notify() {
 
 # Auto-detect scanner device (fallback when SCANNER_DEVICE is not set)
 detect_device() {
-    scanimage -L 2>/dev/null | grep -oP "fujitsu:ScanSnap iX500:\d+" | head -1
+    scanimage -L 2>/dev/null | grep -oE "fujitsu:ScanSnap iX500:[0-9]+" | head -1
 }
 
 get_button_state() {
-    # Read scanner options, extract scan button state
-    scanimage --device "$DEVICE" -A 2>/dev/null | grep -oP '(?<=--scan\[=\(yes\|no\)\] \[)\w+' || echo "error"
+    local result
+    result=$(scanimage --device "$DEVICE" -A 2>/dev/null | sed -En 's/.*--scan\[[^]]*\] \[([a-z]+)\].*/\1/p')
+    echo "${result:-error}"
 }
 
 # Scanner device — from env or auto-detect
