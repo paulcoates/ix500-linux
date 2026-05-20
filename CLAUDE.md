@@ -80,7 +80,7 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 ## Dependencies
 
 **Docker (all baked into the image):**
-- `sane-backends`, `imagemagick`, `bc`, `curl`, `py3-apprise` (Alpine packages)
+- `sane-backends`, `imagemagick`, `bc`, `curl`, `apprise` (Alpine packages)
 - Local OCR mode: `tesseract-ocr`, `tesseract-ocr-data-nld`, `ghostscript`, `ocrmypdf` (commented out in Dockerfile; adds ~250 MB)
 
 **Systemd install (host packages):**

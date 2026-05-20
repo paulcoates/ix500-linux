@@ -6,7 +6,7 @@ RUN apk add --no-cache \
     imagemagick \
     bc \
     curl \
-    py3-apprise
+    apprise
 
 # Local OCR mode — uncomment to enable (adds ~250 MB):
 # RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-nld ghostscript python3 py3-pip \
