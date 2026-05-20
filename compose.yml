@@ -1,0 +1,11 @@
+services:
+  scanner:
+    build: .
+    restart: unless-stopped
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    env_file: .env
+    # Uncomment volumes as needed:
+    # volumes:
+    #   - /path/to/paperless/consume:/consume           # folder mode (PAPERLESS_CONSUME_DIR=/consume)
+    #   - ./scanner-inbox:/root/Documents/scanner-inbox # local OCR mode

@@ -4,16 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-One-button scanning workflow for the Fujitsu ScanSnap iX500 on Linux. Press the hardware button, get a PDF. Supports three delivery modes: upload to Paperless-ngx via API, write to a Paperless consume folder, or local OCR via ocrmypdf. Pure bash scripts orchestrated by a `justfile`.
+One-button scanning workflow for the Fujitsu ScanSnap iX500 on Linux. Press the hardware button, get a PDF. Supports three delivery modes: upload to Paperless-ngx via API, write to a Paperless consume folder, or local OCR via ocrmypdf. Ships as either a Docker container or a systemd+udev install.
 
 ## Architecture
 
-The system has four components forming a hardware-to-PDF pipeline:
+Two core scripts:
+
+- **`scan-button-poll`** — Polls the scanner button every 0.1s via `scanimage -A`; triggers `scan` on press with 3s debounce; sends push notifications via Apprise on success/failure
+- **`scan`** — Drives the actual scanning: duplex TIFF capture at 300 DPI with bleed margin → optional per-page color/grayscale detection (10% saturation threshold) → ImageMagick PDF creation → delivery via API upload, consume folder, or local OCR
+
+### Docker deployment (recommended)
+
+`Dockerfile` + `compose.yml` — Alpine-based container with all dependencies baked in. No host-side install beyond Docker. USB device passthrough via `/dev/bus/usb`. Always-running container replaces both systemd service and udev rule; Docker's `restart: unless-stopped` handles boot persistence.
+
+```
+cp .env.example .env   # fill in your settings
+docker compose up -d
+```
+
+The poll loop handles scanner connect/disconnect natively (retries on error), so no udev trigger is needed.
+
+### Systemd deployment (legacy)
+
+Four components forming a hardware-to-PDF pipeline:
 
 1. **`99-scansnap-ix500.rules`** — Udev rule that auto-starts the systemd user service when the scanner (USB `04c5:132b`) is plugged in
 2. **`scan-button.service`** — Systemd user service that runs the polling script; restarts on failure with 5s delay
-3. **`scan-button-poll`** — Bash script polling the scanner button every 0.1s via `scanimage -A`; triggers `scan` on press with 3s debounce; sends clickable desktop notifications (open Paperless/file on success, view logs on failure)
-4. **`scan`** — Bash script that drives the actual scanning: duplex TIFF capture at 300 DPI with bleed margin → optional per-page color/grayscale detection (10% saturation threshold) → ImageMagick PDF creation → delivery via API upload, consume folder, or local OCR
+3. `scan-button-poll` + `scan` scripts (same as above)
+4. Config in `~/.config/environment.d/scanner.conf`
+
+Run `just install` to set up the systemd path interactively.
 
 ### Three modes
 
@@ -33,6 +53,7 @@ Environment variables:
 - `PAPERLESS_URL` — Paperless-ngx base URL (API mode)
 - `PAPERLESS_TOKEN` — Paperless-ngx API token (API mode)
 - `PAPERLESS_CONSUME_DIR` — Path to Paperless consume folder (folder mode)
+- `APPRISE_URLS` — Space-separated Apprise notification URLs; unset disables notifications
 
 ## Usage
 
@@ -58,21 +79,18 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 
 ## Dependencies
 
-**Build/install:**
-- **just** — task runner (`just install`, `just check`, etc.)
+**Docker (all baked into the image):**
+- `sane-backends`, `imagemagick`, `bc`, `curl`, `py3-apprise` (Alpine packages)
+- Local OCR mode: `tesseract-ocr`, `tesseract-ocr-data-nld`, `ghostscript`, `ocrmypdf` (commented out in Dockerfile; adds ~250 MB)
 
-**Both modes:**
+**Systemd install (host packages):**
+- **just** — task runner
 - **SANE** (`scanimage`) — scanner driver interface
 - **ImageMagick** (`magick`) — image manipulation and color analysis
 - **bc** — floating point comparison for color detection
-- **notify-send**, **xdg-open**, **xdg-terminal-exec** — desktop notifications
-
-**Local mode only:**
-- **ocrmypdf** — OCR and PDF creation
-- **Tesseract** with `nld` and `eng` trained data
-
-**Paperless API mode only:**
-- **curl** — API upload
+- **apprise** — push notifications (Pushover, Slack, email, and 100+ services)
+- **curl** — Paperless API upload
+- **ocrmypdf** + **Tesseract** with `nld` + `eng` — local OCR mode only
 
 ## Key Parameters
 

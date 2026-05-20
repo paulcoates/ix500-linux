@@ -13,6 +13,13 @@ log() {
     echo "[$(date '+%H:%M:%S')] $1"
 }
 
+notify() {
+    [ -z "$APPRISE_URLS" ] && return
+    local title="$1" body="$2"
+    read -ra _urls <<< "$APPRISE_URLS"
+    apprise -t "$title" -b "$body" "${_urls[@]}" 2>/dev/null &
+}
+
 # Auto-detect scanner device (fallback when SCANNER_DEVICE is not set)
 detect_device() {
     scanimage -L 2>/dev/null | grep -oP "fujitsu:ScanSnap iX500:\d+" | head -1
@@ -52,35 +59,15 @@ while true; do
 
         if [ "$SCAN_OK" = true ]; then
             log "Scan completed successfully"
-            # Send clickable desktop notification (in background to not block polling)
+            DONE_MSG=$(echo "$SCAN_OUTPUT" | grep "^Done:" | tail -1)
             if [ -n "$PAPERLESS_URL" ]; then
-                (
-                    ACTION=$(notify-send -i scanner --action="open=Open in Paperless" \
-                        "Scan Complete" "Document uploaded to Paperless" 2>/dev/null)
-                    [ "$ACTION" = "open" ] && xdg-open "$PAPERLESS_URL" 2>/dev/null
-                ) &
-            elif [ -n "$PAPERLESS_CONSUME_DIR" ]; then
-                OUTFILE=$(echo "$SCAN_OUTPUT" | grep -oP '(?<=Done: )\S+')
-                (
-                    ACTION=$(notify-send -i scanner --action="open=Open" \
-                        "Scan Complete" "Document saved to consume folder" 2>/dev/null)
-                    [ "$ACTION" = "open" ] && xdg-open "$OUTFILE" 2>/dev/null
-                ) &
+                notify "Scan Complete" "${DONE_MSG:-Document uploaded to Paperless}"$'\n'"$PAPERLESS_URL"
             else
-                OUTFILE=$(echo "$SCAN_OUTPUT" | grep -oP '(?<=Done: )\S+')
-                (
-                    ACTION=$(notify-send -i scanner --action="open=Open" \
-                        "Scan Complete" "Document saved to scanner-inbox" 2>/dev/null)
-                    [ "$ACTION" = "open" ] && xdg-open "$OUTFILE" 2>/dev/null
-                ) &
+                notify "Scan Complete" "${DONE_MSG:-Scan saved successfully}"
             fi
         else
             log "Scan failed"
-            (
-                ACTION=$(notify-send -u critical -i dialog-error --action="logs=View Logs" \
-                    "Scan Failed" "Something went wrong during scanning" 2>/dev/null)
-                [ "$ACTION" = "logs" ] && xdg-terminal-exec journalctl --user -u scan-button.service -n 50 --no-pager 2>/dev/null
-            ) &
+            notify "Scan Failed" "Something went wrong. Check logs: journalctl --user -u scan-button.service"
         fi
 
         # Debounce - wait before polling again to let button release

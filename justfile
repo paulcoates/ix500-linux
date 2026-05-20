@@ -77,9 +77,7 @@ install:
     fi
 
     # Notification dependencies
-    check_cmd notify-send "libnotify" || DEPS_OK=false
-    check_cmd xdg-open "xdg-utils" || DEPS_OK=false
-    check_cmd xdg-terminal-exec "" || DEPS_OK=false
+    check_cmd apprise "" || DEPS_OK=false
 
     echo
 
@@ -129,6 +127,7 @@ install:
     EXISTING_URL=""
     EXISTING_TOKEN=""
     EXISTING_CONSUME_DIR=""
+    EXISTING_APPRISE_URLS=""
 
     # Migrate from old paperless.conf if it exists
     if [ -f "$OLD_ENV_FILE" ]; then
@@ -140,6 +139,7 @@ install:
         [ -z "$EXISTING_URL" ] && EXISTING_URL=$(grep -oP '(?<=^PAPERLESS_URL=).+' "$ENV_FILE" 2>/dev/null || true)
         [ -z "$EXISTING_TOKEN" ] && EXISTING_TOKEN=$(grep -oP '(?<=^PAPERLESS_TOKEN=).+' "$ENV_FILE" 2>/dev/null || true)
         EXISTING_CONSUME_DIR=$(grep -oP '(?<=^PAPERLESS_CONSUME_DIR=).+' "$ENV_FILE" 2>/dev/null || true)
+        EXISTING_APPRISE_URLS=$(grep -oP '(?<=^APPRISE_URLS=).+' "$ENV_FILE" 2>/dev/null | tr -d '"' || true)
     fi
 
     # --- Mode-specific configuration ---
@@ -204,6 +204,30 @@ install:
         echo
     fi
 
+    # --- Notification configuration ---
+    echo "Notification configuration (Apprise):"
+    echo "  Enter one or more Apprise notification URLs (space-separated)."
+    echo "  Supports Pushover, Slack, email, and 100+ services."
+    echo "  See: https://github.com/caronc/apprise/wiki"
+    echo "  Leave blank to disable notifications."
+
+    if [ -n "$EXISTING_APPRISE_URLS" ]; then
+        read -rp "  Apprise URL(s) [****${EXISTING_APPRISE_URLS: -6}]: " APPRISE_URLS
+        APPRISE_URLS="${APPRISE_URLS:-$EXISTING_APPRISE_URLS}"
+    else
+        read -rp "  Apprise URL(s): " APPRISE_URLS
+    fi
+
+    if [ -n "$APPRISE_URLS" ]; then
+        read -rp "  Send test notification? [Y/n]: " TEST_NOTIFY
+        if [ "$TEST_NOTIFY" != "n" ] && [ "$TEST_NOTIFY" != "N" ]; then
+            read -ra _test_urls <<< "$APPRISE_URLS"
+            apprise -t "ix500-linux" -b "Notifications configured successfully!" "${_test_urls[@]}" 2>/dev/null && \
+                ok "Test notification sent" || warn "Test notification failed (check your URL)"
+        fi
+    fi
+    echo
+
     # --- Write config file ---
     mkdir -p "$ENV_DIR"
     {
@@ -216,6 +240,7 @@ install:
         elif [ "$MODE" = "paperless-folder" ]; then
             echo "PAPERLESS_CONSUME_DIR=$PAPERLESS_CONSUME_DIR"
         fi
+        [ -n "$APPRISE_URLS" ] && echo "APPRISE_URLS=\"$APPRISE_URLS\""
     } > "$ENV_FILE"
     ok "Saved settings to $ENV_FILE"
 
@@ -255,6 +280,7 @@ install:
     elif [ "$MODE" = "paperless-folder" ]; then
         ENV_VARS+=(PAPERLESS_CONSUME_DIR="$PAPERLESS_CONSUME_DIR")
     fi
+    [ -n "$APPRISE_URLS" ] && ENV_VARS+=(APPRISE_URLS="$APPRISE_URLS")
     systemctl --user set-environment "${ENV_VARS[@]}"
 
     systemctl --user daemon-reload
@@ -303,9 +329,7 @@ check:
 
     echo
     echo "Notification dependencies:"
-    check_cmd notify-send
-    check_cmd xdg-open
-    check_cmd xdg-terminal-exec
+    check_cmd apprise
 
     echo
     echo "Paperless API mode:"
