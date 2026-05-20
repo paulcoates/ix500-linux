@@ -78,6 +78,9 @@ while true; do
     elif [ "$button_state" = "error" ]; then
         log "Scanner not responding, waiting..."
         sleep 5
+        if [ -z "$SCANNER_DEVICE" ]; then
+            DEVICE=$(detect_device)
+        fi
     fi
 
     sleep "$POLL_INTERVAL"
