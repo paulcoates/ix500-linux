@@ -35,6 +35,10 @@ Four components forming a hardware-to-PDF pipeline:
 
 Run `just install` to set up the systemd path interactively.
 
+### System-level deployment (headless appliance / LXC)
+
+`scan-button-system.service` — a system-scope variant of `scan-button.service` for hosts with no logged-in desktop session (e.g. a dedicated Proxmox LXC). No DBUS, no `%h`, no udev trigger — same always-retry poll loop as the Docker path handles connect/disconnect. Expects the repo checked out at `/opt/ix500-linux` and config at `/etc/ix500-linux/scanner.env` (`EnvironmentFile=`), and is enabled via `WantedBy=multi-user.target` instead of a user target. Not wired into `justfile`/`just install`; deployed by copying `scan-button-system.service` to `/etc/systemd/system/scan-button.service` and enabling it.
+
 ### Three modes
 
 Determined automatically by environment variables:

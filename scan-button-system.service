@@ -1,0 +1,14 @@
+[Unit]
+Description=ScanSnap iX500 button service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/ix500-linux/scanner.env
+ExecStart=/opt/ix500-linux/scan-button-poll
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
