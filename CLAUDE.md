@@ -104,6 +104,7 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 | Bleed margin | 10 mm | `scan` |
 | Blank page skip threshold | 20% | `scan` (`--swskip`) |
 | Background white-point clip | `-level 0%,90%` | `scan` — fixes gray background/bleed-through/crease visibility that raw scanimage output has vs. OEM ScanSnap Manager |
+| PDF JPEG compression | `-compress JPEG -quality 75` | `scan` (paperless-api/paperless-folder modes) — `-quality` alone is a no-op for ImageMagick PDF output; without `-compress JPEG` a 300dpi color page is ~32MB per page instead of <1MB |
 | Color detection | `COLOR_DETECT` env var (default: true) | `scanner.conf` / `scan` |
 | Grayscale conversion threshold | 10% saturation | `scan` |
 | Button poll interval | 0.1s | `scan-button-poll` |
