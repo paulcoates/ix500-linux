@@ -20,14 +20,20 @@ notify() {
     apprise -t "$title" -b "$body" "${_urls[@]}" 2>/dev/null &
 }
 
+# USB command timeout — bounds how long a wedged scanner (e.g. right after
+# a disconnect/re-enumeration) can block a single poll iteration. 30s is
+# generous headroom over normal scanimage round-trips (observed up to ~16s)
+# without misfiring during ordinary, if occasionally slow, operation.
+SCAN_CMD_TIMEOUT=30
+
 # Auto-detect scanner device (fallback when SCANNER_DEVICE is not set)
 detect_device() {
-    scanimage -L 2>/dev/null | grep -oE "fujitsu:ScanSnap iX500:[0-9]+" | head -1
+    timeout "$SCAN_CMD_TIMEOUT" scanimage -L 2>/dev/null | grep -oE "fujitsu:ScanSnap iX500:[0-9]+" | head -1
 }
 
 get_button_state() {
     local result
-    result=$(scanimage --device "$DEVICE" -A 2>/dev/null | sed -En 's/.*--scan\[[^]]*\] \[([a-z]+)\].*/\1/p')
+    result=$(timeout "$SCAN_CMD_TIMEOUT" scanimage --device "$DEVICE" -A 2>/dev/null | sed -En 's/.*--scan\[[^]]*\] \[([a-z]+)\].*/\1/p')
     echo "${result:-error}"
 }
 

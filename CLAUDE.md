@@ -107,6 +107,7 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 | Grayscale conversion threshold | 10% saturation | `scan` |
 | Button poll interval | 0.1s | `scan-button-poll` |
 | Debounce period | 3s | `scan-button-poll` |
+| USB command timeout | 30s | `scan-button-poll` (`SCAN_CMD_TIMEOUT`, wraps `scanimage` in `detect_device`/`get_button_state`) |
 | OCR languages | `nld+eng` | `scan` (local mode only) |
 | JPEG quality | 60 | `scan` (local mode only) |
 
