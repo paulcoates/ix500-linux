@@ -37,9 +37,14 @@ get_button_state() {
     echo "${result:-error}"
 }
 
+# Preserve the user's original config before SCANNER_DEVICE gets
+# overwritten below — `[ -z "$USER_SCANNER_DEVICE" ]` is what decides
+# whether to auto-redetect later, same as the original semantics.
+USER_SCANNER_DEVICE="$SCANNER_DEVICE"
+
 # Scanner device — from env or auto-detect
-if [ -n "$SCANNER_DEVICE" ]; then
-    DEVICE="$SCANNER_DEVICE"
+if [ -n "$USER_SCANNER_DEVICE" ]; then
+    DEVICE="$USER_SCANNER_DEVICE"
 else
     DEVICE=$(detect_device)
 fi
@@ -47,6 +52,13 @@ if [ -z "$DEVICE" ]; then
     log "Error: ScanSnap iX500 not found"
     exit 1
 fi
+
+# Export what we just found so `scan` (which does its own untimed
+# scanimage -L when SCANNER_DEVICE is unset) doesn't redundantly
+# re-detect on every single trigger — that redetect was adding the
+# scanimage -L round-trip (~15-20s observed) to every button press
+# before scanning actually started.
+export SCANNER_DEVICE="$DEVICE"
 
 log "Starting button poll for $DEVICE"
 
@@ -84,8 +96,9 @@ while true; do
     elif [ "$button_state" = "error" ]; then
         log "Scanner not responding, waiting..."
         sleep 5
-        if [ -z "$SCANNER_DEVICE" ]; then
+        if [ -z "$USER_SCANNER_DEVICE" ]; then
             DEVICE=$(detect_device)
+            export SCANNER_DEVICE="$DEVICE"
         fi
     fi
 

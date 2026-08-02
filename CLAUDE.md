@@ -118,6 +118,7 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 - When `COLOR_DETECT=false`, all pages are converted to grayscale (no ImageMagick analysis).
 - All dependencies are in `/usr/bin`; no Homebrew paths needed in the service file.
 - `scan-button-poll` resolves the `scan` script path relative to its own location via `BASH_SOURCE`.
+- `scan-button-poll` exports whatever device it finds as `SCANNER_DEVICE` before invoking `scan`, so `scan`'s own auto-detect (which also runs an untimed `scanimage -L` when `SCANNER_DEVICE` is unset) doesn't redundantly re-run on every trigger. The original user-configured value is kept separately in `USER_SCANNER_DEVICE`, which is what actually gates whether `scan-button-poll` auto-redetects on a polling error — don't confuse the two when reading the device-detection logic.
 
 ## Platform
 
