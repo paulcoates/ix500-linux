@@ -103,6 +103,7 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 | Scan resolution | 300 DPI | `scan` |
 | Bleed margin | 10 mm | `scan` |
 | Blank page skip threshold | 20% | `scan` (`--swskip`) |
+| Background white-point clip | `-level 0%,90%` | `scan` — fixes gray background/bleed-through/crease visibility that raw scanimage output has vs. OEM ScanSnap Manager |
 | Color detection | `COLOR_DETECT` env var (default: true) | `scanner.conf` / `scan` |
 | Grayscale conversion threshold | 10% saturation | `scan` |
 | Button poll interval | 0.1s | `scan-button-poll` |

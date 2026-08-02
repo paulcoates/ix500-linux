@@ -80,6 +80,19 @@ fi
 
 echo "Scanned $PAGECOUNT page(s)"
 
+# Clean up background — raw scanimage output has no exposure/white-balance
+# correction (unlike OEM ScanSnap Manager), so the whole page comes out
+# visibly gray, and faint paper-texture shadows/bleed-through from the
+# other side of the page render at much higher contrast than they should.
+# Clipping the white point pushes light background noise to pure white
+# while leaving actual (much darker) text/ink untouched. Verified against
+# a real sample: eliminates visible crease lines and bleed-through, no
+# effect on text crispness or color accuracy (logo colors unaffected).
+echo "Cleaning up background..."
+for tiff in "$WORKDIR"/page-*.tiff; do
+    magick "$tiff" -level 0%,90% "$tiff"
+done
+
 # Auto-detect color vs grayscale for each page (reduces file size)
 # Can be disabled with COLOR_DETECT=false
 if [ "${COLOR_DETECT:-true}" = "true" ]; then
