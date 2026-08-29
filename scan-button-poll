@@ -26,6 +26,14 @@ notify() {
 # without misfiring during ordinary, if occasionally slow, operation.
 SCAN_CMD_TIMEOUT=30
 
+# Wedge alert — after this many *consecutive* failed button polls, fire one
+# Apprise notification that the scanner needs a hands-on USB replug, then go
+# quiet until it recovers. On the LXC/xHCI hang this is written for, each
+# failed poll costs ~SCAN_CMD_TIMEOUT (the scanimage -A times out) plus the
+# 5s backoff below, so the default 10 is roughly 5-6 min of a genuinely
+# unresponsive scanner — well past any normal re-enumeration blip.
+WEDGE_ALERT_THRESHOLD="${WEDGE_ALERT_THRESHOLD:-10}"
+
 # Auto-detect scanner device (fallback when SCANNER_DEVICE is not set)
 detect_device() {
     timeout "$SCAN_CMD_TIMEOUT" scanimage -L 2>/dev/null | grep -oE "fujitsu:ScanSnap iX500:[0-9]+" | head -1
@@ -66,8 +74,19 @@ log "Starting button poll for $DEVICE"
 sleep 2
 
 # Main polling loop
+consec_errors=0
 while true; do
     button_state=$(get_button_state)
+
+    # Clear the wedge counter as soon as the scanner answers again, and if we
+    # had already alerted, say it came back.
+    if [ "$button_state" != "error" ] && [ "$consec_errors" -gt 0 ]; then
+        if [ "$consec_errors" -ge "$WEDGE_ALERT_THRESHOLD" ]; then
+            log "Scanner responding again after $consec_errors failed polls"
+            notify "Scanner Recovered" "iX500 is responding again after $consec_errors failed polls."
+        fi
+        consec_errors=0
+    fi
 
     if [ "$button_state" = "yes" ]; then
         log "Button pressed! Starting scan..."
@@ -94,7 +113,17 @@ while true; do
         sleep "$DEBOUNCE"
 
     elif [ "$button_state" = "error" ]; then
-        log "Scanner not responding, waiting..."
+        consec_errors=$((consec_errors + 1))
+        log "Scanner not responding, waiting... ($consec_errors)"
+
+        # Fire exactly once, when we cross the threshold — a D-state scanimage
+        # can't be killed from in here, so this is the only recovery signal.
+        if [ "$consec_errors" -eq "$WEDGE_ALERT_THRESHOLD" ]; then
+            log "Scanner wedged after $consec_errors failed polls — alerting"
+            notify "Scanner Wedged" \
+                "iX500 has been unresponsive for $consec_errors polls. Likely a wedged host USB endpoint — physically unplug/replug the scanner's USB cable at the NUC."
+        fi
+
         sleep 5
         if [ -z "$USER_SCANNER_DEVICE" ]; then
             DEVICE=$(detect_device)
