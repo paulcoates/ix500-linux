@@ -114,10 +114,12 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 | USB command timeout | 30s | `scan-button-poll` (`SCAN_CMD_TIMEOUT`, wraps `scanimage` in `detect_device`/`get_button_state`) |
 | OCR languages | `nld+eng` | `scan` (local mode only) |
 | JPEG quality | 60 | `scan` (local mode only) |
+| Scratch dir | `/var/tmp` (override `TMPDIR`) | `scan` `SCRATCH_BASE` — deliberately not `/tmp`, which is often tmpfs; a big batch of ~32MB TIFFs there OOM-kills on a small host |
 
 ## Conventions
 
-- The `scan` script uses `WORKDIR` (not `TMPDIR`) for its temp directory to avoid shadowing the standard env var.
+- The `scan` script keeps its resolved temp dir in `WORKDIR` (not `TMPDIR`) to avoid shadowing the standard env var. The *base* it's created under is `SCRATCH_BASE` = `${TMPDIR:-/var/tmp}` — `/var/tmp`, not `/tmp`, because `/tmp` is tmpfs on many distros and a large scan's TIFF working set there is unreclaimable RAM (this is what OOM-killed a 29-page scan on a 1GB LXC).
+- `cleanup` (EXIT trap) only deletes `WORKDIR` on success or a pre-scan failure. If pages were captured and a later step failed, it renames the dir to `$SCRATCH_BASE/ix500-failed-<timestamp>/` for manual recovery (README "Recovering a failed scan"), pruning all but the newest such dir. `scan-button-poll` forwards the kept path into the failure notification by grepping `scan`'s stdout for `^Kept the scanned pages at:`.
 - Color/grayscale detection runs in both Paperless and local modes when enabled — it reduces upload/file size.
 - When `COLOR_DETECT=false`, all pages are converted to grayscale (no ImageMagick analysis).
 - All dependencies are in `/usr/bin`; no Homebrew paths needed in the service file.

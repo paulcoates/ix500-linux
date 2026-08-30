@@ -105,7 +105,9 @@ while true; do
             fi
         else
             log "Scan failed"
-            notify "Scan Failed" "Something went wrong. Check logs: journalctl --user -u scan-button.service"
+            # If scan kept the captured pages for recovery, surface where.
+            KEPT_MSG=$(echo "$SCAN_OUTPUT" | grep "^Kept the scanned pages at:" | tail -1)
+            notify "Scan Failed" "${KEPT_MSG:-Something went wrong.} Check logs: journalctl -u scan-button.service"
         fi
 
         # Debounce - wait before polling again to let button release

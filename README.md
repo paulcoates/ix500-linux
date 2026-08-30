@@ -82,6 +82,37 @@ Settings are stored in `~/.config/environment.d/scanner.conf` (managed by `just 
 | `PAPERLESS_URL` | Paperless-ngx base URL (API mode) |
 | `PAPERLESS_TOKEN` | Paperless-ngx API token (API mode) |
 | `PAPERLESS_CONSUME_DIR` | Path to Paperless consume folder (folder mode) |
+| `TMPDIR` | Scratch dir for page TIFFs (default `/var/tmp`) — see [Scratch space](#scratch-space) |
+
+### Scratch space
+
+`scan` writes the intermediate page TIFFs to `/var/tmp` (a 300dpi colour A4
+page is ~32MB of TIFF, so a big batch is hundreds of MB). It deliberately
+does **not** use `/tmp`: on many systemd distros that's `tmpfs` (RAM-backed),
+and on a memory-constrained host a large scan there can exhaust RAM and get
+OOM-killed mid-job. Point `TMPDIR` elsewhere if `/var/tmp` isn't a good home
+for transient files on your system.
+
+### Recovering a failed scan
+
+If `scanimage` captured pages but a later step failed (PDF assembly, upload,
+consume-folder write), `scan` keeps the captured TIFFs at
+`$TMPDIR/ix500-failed-<timestamp>/` instead of deleting them, and the
+failure notification names the path. Re-run just the assembly + delivery
+against that directory — no need to feed the paper again:
+
+```bash
+SCAN_DIR=/var/tmp/ix500-failed-2026-08-30-113346   # from the notification
+for p in "$SCAN_DIR"/page-*.tiff; do
+  magick "$p" -compress JPEG -quality 75 "$p.pdf"
+done
+gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite \
+  -sOutputFile="$SCAN_DIR/recovered.pdf" "$SCAN_DIR"/page-*.tiff.pdf
+```
+
+Then move `recovered.pdf` into your consume folder (or upload it). Only the
+most recent failed scan is kept; older ones are pruned automatically, and
+`systemd-tmpfiles` clears `/var/tmp` after 30 days regardless.
 
 ### Scanner options (in `scan`)
 

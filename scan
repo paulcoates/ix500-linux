@@ -44,10 +44,36 @@ PAGE_WIDTH_MM=$((210 + BLEED_MM))
 PAGE_HEIGHT_MM=$((297 + BLEED_MM))
 
 TIMESTAMP=$(date '+%Y-%m-%d-%H%M%S')
-WORKDIR=$(mktemp -d)
 FILENAME="${1:-scan-$TIMESTAMP}"
 
+# Scratch dir for the page TIFFs. Defaults to /var/tmp, NOT the system default
+# of /tmp: on many systemd distros /tmp is tmpfs (RAM-backed), and a multi-page
+# 300dpi colour scan is ~32MB of TIFF per page — on a memory-constrained host
+# (e.g. a 1GB LXC) scanimage dumping a 29-page batch into tmpfs is ~1GB of
+# unreclaimable RAM before magick even runs, which OOM-kills the job. /var/tmp
+# is disk-backed, so the working set stays as reclaimable page cache. Override
+# with TMPDIR. Falls back to the mktemp default if /var/tmp isn't usable.
+SCRATCH_BASE="${TMPDIR:-/var/tmp}"
+WORKDIR=$(mktemp -d "$SCRATCH_BASE/ix500.XXXXXXXX" 2>/dev/null || mktemp -d)
+
+# On a clean exit, or a failure before any page was scanned, just bin the
+# scratch dir. But if scanimage produced pages and a *later* step failed
+# (PDF assembly, upload, consume-folder write), keep the TIFFs so the job can
+# be re-assembled without feeding the paper through the ADF again — see
+# "Recovering a failed scan" in the README. Only the most recent failure is
+# kept; older ones are pruned here so they can't fill the disk, and
+# systemd-tmpfiles sweeps /var/tmp at 30 days as a backstop.
 cleanup() {
+    local rc=$?
+    if [ "$rc" -ne 0 ] && compgen -G "$WORKDIR/page-*.tiff" >/dev/null; then
+        local kept="$SCRATCH_BASE/ix500-failed-$TIMESTAMP"
+        if mv "$WORKDIR" "$kept" 2>/dev/null; then
+            ls -dt "$SCRATCH_BASE"/ix500-failed-* 2>/dev/null | tail -n +2 | xargs -r rm -rf
+            echo "Scan failed after $(compgen -G "$kept/page-*.tiff" | wc -l) page(s) were captured." >&2
+            echo "Kept the scanned pages at: $kept" >&2
+        fi
+        return
+    fi
     rm -rf "$WORKDIR"
 }
 trap cleanup EXIT
