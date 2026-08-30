@@ -57,6 +57,7 @@ install:
 
     check_cmd scanimage "sane-backends" || DEPS_OK=false
     check_cmd magick "" || DEPS_OK=false
+    check_cmd gs "ghostscript" || DEPS_OK=false
     check_cmd bc "bc" || DEPS_OK=false
 
     if [ "$MODE" = "local" ]; then

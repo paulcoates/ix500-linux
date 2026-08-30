@@ -52,6 +52,26 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Assemble the per-page TIFFs into one JPEG-compressed PDF, one page at a
+# time. A single `magick page-*.tiff out.pdf` call loads every page's raw
+# raster into memory at once — a 29-page 300dpi colour scan (raw TIFFs
+# ~32MB each) OOM-killed magick on a 1GB host, losing the scan silently.
+# Converting each page to its own one-page PDF first keeps peak memory at
+# ~one page; ghostscript then concatenates the (already tiny) single-page
+# PDFs cheaply. Writes to a temp file and renames into place so a consumer
+# polling the output dir never sees a partial PDF.
+assemble_pdf() {
+    local out="$1" tmp page
+    tmp=$(mktemp "$(dirname "$out")/.$(basename "$out").XXXXXX")
+    for page in "$WORKDIR"/page-*.tiff; do
+        magick "$page" -compress JPEG -quality 75 "$page.pdf"
+    done
+    gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite \
+        -sOutputFile="$tmp" "$WORKDIR"/page-*.tiff.pdf
+    chmod 644 "$tmp"   # mktemp makes it 0600; Paperless's consumer must be able to read it
+    mv "$tmp" "$out"
+}
+
 echo "Scanning (duplex, color, A4)..."
 scanimage --device "$DEVICE" \
     --format=tiff \
@@ -126,14 +146,13 @@ fi
 
 if [ "$MODE" = "paperless-api" ]; then
     echo "Creating PDF..."
-    # -quality alone does nothing for PDF output in ImageMagick — without
-    # -compress JPEG it defaults to a near-lossless encoding that's larger
-    # than the raw pixel data (measured: 127% "compression" ratio). Verified
-    # against a real scan: -compress JPEG -quality 75 takes a 300dpi color
-    # A4 page from ~32MB to <1MB with no visible artifact difference from
-    # quality 60 or 85. Paperless does its own OCR/archive optimization on
-    # ingest, so the incoming file only needs to look right, not be lossless.
-    magick "$WORKDIR"/page-*.tiff -compress JPEG -quality 75 "$WORKDIR/$FILENAME.pdf"
+    # -compress JPEG -quality 75 takes a 300dpi color A4 page from ~32MB to
+    # <1MB with no visible artifact difference from quality 60 or 85 (without
+    # -compress JPEG, ImageMagick's PDF output defaults to a near-lossless
+    # encoding *larger* than the raw pixel data — measured 127% "compression").
+    # Paperless does its own OCR/archive optimization on ingest, so the
+    # incoming file only needs to look right, not be lossless.
+    assemble_pdf "$WORKDIR/$FILENAME.pdf"
 
     echo "Uploading to Paperless..."
     COOKIE_JAR="$WORKDIR/cookies.txt"
@@ -165,7 +184,7 @@ elif [ "$MODE" = "paperless-folder" ]; then
     OUTFILE="$PAPERLESS_CONSUME_DIR/$FILENAME.pdf"
 
     echo "Creating PDF..."
-    magick "$WORKDIR"/page-*.tiff -compress JPEG -quality 75 "$OUTFILE"
+    assemble_pdf "$OUTFILE"
 
     FILESIZE=$(ls -lh "$OUTFILE" | awk '{print $5}')
     echo "Done: $OUTFILE ($PAGECOUNT pages, $FILESIZE)"
@@ -176,8 +195,8 @@ else
     mkdir -p "$OUTDIR"
 
     echo "Running OCR..."
-    magick "$WORKDIR"/page-*.tiff "$WORKDIR/combined.tiff"
-    ocrmypdf "$WORKDIR/combined.tiff" "$OUTFILE" \
+    assemble_pdf "$WORKDIR/combined.pdf"
+    ocrmypdf "$WORKDIR/combined.pdf" "$OUTFILE" \
         -l nld+eng \
         --rotate-pages \
         --rotate-pages-threshold 2 \

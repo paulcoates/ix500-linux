@@ -11,7 +11,7 @@ One-button scanning workflow for the Fujitsu ScanSnap iX500 on Linux. Press the 
 Two core scripts:
 
 - **`scan-button-poll`** — Polls the scanner button every 0.1s via `scanimage -A`; triggers `scan` on press with 3s debounce; sends push notifications via Apprise on success/failure
-- **`scan`** — Drives the actual scanning: duplex TIFF capture at 300 DPI with bleed margin → optional per-page color/grayscale detection (10% saturation threshold) → ImageMagick PDF creation → delivery via API upload, consume folder, or local OCR
+- **`scan`** — Drives the actual scanning: duplex TIFF capture at 300 DPI with bleed margin → optional per-page color/grayscale detection (10% saturation threshold) → per-page ImageMagick TIFF→PDF conversion concatenated with Ghostscript (`assemble_pdf`) → delivery via API upload, consume folder, or local OCR. `assemble_pdf` works one page at a time on purpose: a single `magick page-*.tiff out.pdf` over all pages loads every raw raster into RAM at once and OOM-killed on a large (29-page) scan.
 
 ### Docker deployment (recommended)
 
@@ -43,8 +43,8 @@ Run `just install` to set up the systemd path interactively.
 
 Determined automatically by environment variables:
 
-- **Paperless API mode** (`PAPERLESS_URL` + `PAPERLESS_TOKEN` set): Creates PDF with ImageMagick, uploads to Paperless-ngx via `POST /api/documents/post_document/`. Paperless handles OCR, archiving, etc.
-- **Paperless folder mode** (`PAPERLESS_CONSUME_DIR` set): Creates PDF with ImageMagick, writes directly to the Paperless consume folder. Paperless picks it up from there.
+- **Paperless API mode** (`PAPERLESS_URL` + `PAPERLESS_TOKEN` set): Builds the PDF with `assemble_pdf`, uploads to Paperless-ngx via `POST /api/documents/post_document/`. Paperless handles OCR, archiving, etc.
+- **Paperless folder mode** (`PAPERLESS_CONSUME_DIR` set): Builds the PDF with `assemble_pdf`, writes it to the Paperless consume folder via a temp file + atomic rename so the poller never sees a partial PDF.
 - **Local mode** (none of the above set): Runs `ocrmypdf` with Dutch+English OCR, saves to `~/Documents/scanner-inbox/`
 
 ### Configuration
@@ -84,13 +84,14 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 ## Dependencies
 
 **Docker (all baked into the image):**
-- `sane-backends`, `imagemagick`, `bc`, `curl`, `apprise` (Alpine packages)
-- Local OCR mode: `tesseract-ocr`, `tesseract-ocr-data-nld`, `ghostscript`, `ocrmypdf` (commented out in Dockerfile; adds ~250 MB)
+- `sane-backends`, `imagemagick`, `ghostscript`, `bc`, `curl`, `apprise` (Alpine packages)
+- Local OCR mode: `tesseract-ocr`, `tesseract-ocr-data-nld`, `ocrmypdf` (commented out in Dockerfile; adds ~250 MB)
 
 **Systemd install (host packages):**
 - **just** — task runner
 - **SANE** (`scanimage`) — scanner driver interface
 - **ImageMagick** (`magick`) — image manipulation and color analysis
+- **Ghostscript** (`gs`) — concatenates per-page PDFs in `assemble_pdf`
 - **bc** — floating point comparison for color detection
 - **apprise** — push notifications (Pushover, Slack, email, and 100+ services)
 - **curl** — Paperless API upload
@@ -104,7 +105,8 @@ The interactive installer detects the scanner, asks for mode and preferences, co
 | Bleed margin | 10 mm | `scan` |
 | Blank page skip threshold | 20% | `scan` (`--swskip`) |
 | Background white-point clip | `-level 0%,90%` | `scan` — fixes gray background/bleed-through/crease visibility that raw scanimage output has vs. OEM ScanSnap Manager |
-| PDF JPEG compression | `-compress JPEG -quality 75` | `scan` (paperless-api/paperless-folder modes) — `-quality` alone is a no-op for ImageMagick PDF output; without `-compress JPEG` a 300dpi color page is ~32MB per page instead of <1MB |
+| PDF JPEG compression | `-compress JPEG -quality 75` | `scan` `assemble_pdf` — `-quality` alone is a no-op for ImageMagick PDF output; without `-compress JPEG` a 300dpi color page is ~32MB per page instead of <1MB |
+| PDF assembly | per-page `magick` TIFF→PDF, then `gs` concat | `scan` `assemble_pdf` — one page in RAM at a time; the old all-pages-at-once `magick` call OOM-killed on a 29-page scan |
 | Color detection | `COLOR_DETECT` env var (default: true) | `scanner.conf` / `scan` |
 | Grayscale conversion threshold | 10% saturation | `scan` |
 | Button poll interval | 0.1s | `scan-button-poll` |

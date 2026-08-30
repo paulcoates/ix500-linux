@@ -4,12 +4,13 @@ RUN apk add --no-cache \
     bash \
     sane-backends \
     imagemagick \
+    ghostscript \
     bc \
     curl \
     apprise
 
 # Local OCR mode — uncomment to enable (adds ~250 MB):
-# RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-nld ghostscript python3 py3-pip \
+# RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-nld python3 py3-pip \
 #     && pip install --no-cache-dir ocrmypdf
 
 COPY scan scan-button-poll /usr/local/bin/

@@ -27,7 +27,8 @@ Without Paperless configured, scans are processed locally with ocrmypdf (Dutch +
 
 - **just** - task runner
 - **sane-backends** (`scanimage`) - scanner driver
-- **ImageMagick** (`magick`) - image processing and PDF creation
+- **ImageMagick** (`magick`) - per-page image processing and PDF creation
+- **Ghostscript** (`gs`) - concatenates the per-page PDFs into one document
 - **bc** - floating point math for color detection
 - **libnotify** (`notify-send`), **xdg-utils** (`xdg-open`), **xdg-terminal-exec** - desktop notifications
 
@@ -124,7 +125,7 @@ Pages with <10% color saturation are converted to grayscale automatically.
 
 1. **Button poll service** checks scanner button every 100ms
 2. **scanimage** captures duplex color TIFF pages
-3. **ImageMagick** combines pages, detects color vs grayscale, creates PDF
+3. **ImageMagick** cleans up each page, detects color vs grayscale, renders it to a one-page PDF; **Ghostscript** concatenates them (done per-page to bound memory use on large scans)
 4. Delivery: **Paperless API** upload, **Paperless folder** write, or local **ocrmypdf**
 5. **Clickable notification** confirms completion
 
