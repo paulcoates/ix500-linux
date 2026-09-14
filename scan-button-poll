@@ -95,13 +95,24 @@ while true; do
         SCAN_OUTPUT=$("$SCAN_SCRIPT" 2>&1) && SCAN_OK=true || SCAN_OK=false
         echo "$SCAN_OUTPUT"
 
+        # Surface any blank-page discard warning (see SWSKIP in `scan`) —
+        # only fires if SWSKIP has been raised above its default of 0, but
+        # when it does, it means a page-side vanished with no image ever
+        # captured, so it goes in the notification, not just the journal.
+        WARN_MSG=$(echo "$SCAN_OUTPUT" | grep "^WARNING:" | tail -1)
+        [ -n "$WARN_MSG" ] && log "$WARN_MSG"
+
         if [ "$SCAN_OK" = true ]; then
             log "Scan completed successfully"
             DONE_MSG=$(echo "$SCAN_OUTPUT" | grep "^Done:" | tail -1)
             if [ -n "$PAPERLESS_URL" ]; then
-                notify "Scan Complete" "${DONE_MSG:-Document uploaded to Paperless}"$'\n'"$PAPERLESS_URL"
+                BODY="${DONE_MSG:-Document uploaded to Paperless}"
+                [ -n "$WARN_MSG" ] && BODY="$BODY"$'\n'"$WARN_MSG"
+                notify "Scan Complete" "$BODY"$'\n'"$PAPERLESS_URL"
             else
-                notify "Scan Complete" "${DONE_MSG:-Scan saved successfully}"
+                BODY="${DONE_MSG:-Scan saved successfully}"
+                [ -n "$WARN_MSG" ] && BODY="$BODY"$'\n'"$WARN_MSG"
+                notify "Scan Complete" "$BODY"
             fi
         else
             log "Scan failed"

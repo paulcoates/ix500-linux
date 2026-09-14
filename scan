@@ -13,10 +13,24 @@
 # - A4 page size with bleed margin for edge-to-edge capture
 # - Duplex (both sides)
 # - Color scan with optional auto-grayscale conversion (COLOR_DETECT)
-# - Auto-skip blank pages (back sides)
+# - Optional skip of blank pages (back sides) — off by default, see SWSKIP
 # - Multi-page batch to single PDF
 
 set -e
+
+# Blank-page skip threshold, in percent of dark pixels (SANE fujitsu
+# backend's own --swskip option). A page-side whose ink coverage is below
+# this gets silently discarded by the driver *before* scan ever sees an
+# image for it — there is no captured file to recover, no error, nothing
+# in `journalctl` by default. Confirmed on a real document: a signature
+# page (mostly white, just a signature + a couple of printed lines) was
+# well under the old default of 20%, so it vanished with the batch simply
+# reporting fewer pages than were fed. Defaults to 0 (disabled) — a false
+# positive here means a real page is gone for good, which is worse than an
+# occasional true-blank duplex backside making it into the output PDF.
+# Override via SWSKIP only after measuring real ink coverage across your
+# documents; see "Blank-page skip false positives" in the README.
+SWSKIP="${SWSKIP:-0}"
 
 # Scanner device — from env or auto-detect
 if [ -n "$SCANNER_DEVICE" ]; then
@@ -99,14 +113,23 @@ assemble_pdf() {
 }
 
 echo "Scanning (duplex, color, A4)..."
-scanimage --device "$DEVICE" \
+# SANE_DEBUG_FUJITSU=5 is the fujitsu backend's own log level for its
+# swskip decision ("buffer_isblank: blank!") — everything else at that
+# level is attach/config error conditions that don't fire in normal
+# operation, so it's quiet enough to run on every scan (unlike higher
+# levels, which also dump every raw USB command/packet). We capture it to
+# a file so we can translate that one line into a plain warning below,
+# instead of it only being visible by re-running with debug logging after
+# the fact.
+SCAN_LOG="$WORKDIR/.scanimage.log"
+SANE_DEBUG_FUJITSU=5 scanimage --device "$DEVICE" \
     --format=tiff \
     --resolution 300 \
     --mode Color \
     --source "ADF Duplex" \
     --page-width "$PAGE_WIDTH_MM" \
     --page-height "$PAGE_HEIGHT_MM" \
-    --swskip 20 \
+    --swskip "$SWSKIP" \
     --swcrop=yes \
     --swdespeck 2 \
     --overscan On \
@@ -114,17 +137,30 @@ scanimage --device "$DEVICE" \
     --buffermode On \
     --batch="$WORKDIR/page-%04d.tiff" \
     --batch-count=-1 \
-    2>&1 | grep -v "^$" || true
+    > "$SCAN_LOG" 2>&1 || true
+grep -v "buffer_isblank:\|^$" "$SCAN_LOG"
 
 # Count scanned pages
 PAGECOUNT=$(ls -1 "$WORKDIR"/page-*.tiff 2>/dev/null | wc -l)
 
+# Count page-sides the driver discarded as blank (see SWSKIP above) — with
+# SWSKIP=0 this is always 0, but if it's ever raised, surface it instead
+# of leaving the drop silent. scan-button-poll forwards any "WARNING:"
+# line into the Apprise notification alongside the normal "Done:" one.
+DISCARD_COUNT=$(grep -c "buffer_isblank: blank!" "$SCAN_LOG" || true)
+
 if [ "$PAGECOUNT" -eq 0 ]; then
+    if [ "${DISCARD_COUNT:-0}" -gt 0 ]; then
+        echo "WARNING: $DISCARD_COUNT page-side(s) discarded as blank (swskip=${SWSKIP}%) and no pages remain"
+    fi
     echo "No pages scanned (feeder empty?)"
     exit 1
 fi
 
 echo "Scanned $PAGECOUNT page(s)"
+if [ "${DISCARD_COUNT:-0}" -gt 0 ]; then
+    echo "WARNING: $DISCARD_COUNT page-side(s) discarded as blank by the scanner driver (swskip=${SWSKIP}%) — check nothing wanted was dropped"
+fi
 
 # Clean up background — raw scanimage output has no exposure/white-balance
 # correction (unlike OEM ScanSnap Manager), so the whole page comes out

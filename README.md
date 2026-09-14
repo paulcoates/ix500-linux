@@ -79,6 +79,7 @@ Settings are stored in `~/.config/environment.d/scanner.conf` (managed by `just 
 |---|---|
 | `SCANNER_DEVICE` | SANE device string (auto-detected if unset) |
 | `COLOR_DETECT` | `true` (default) or `false` — auto-detect color vs grayscale per page |
+| `SWSKIP` | `0` (default, disabled) — % dark-pixel threshold below which a page-side is discarded as blank. See [Blank-page skip false positives](#blank-page-skip-false-positives) before raising it |
 | `PAPERLESS_URL` | Paperless-ngx base URL (API mode) |
 | `PAPERLESS_TOKEN` | Paperless-ngx API token (API mode) |
 | `PAPERLESS_CONSUME_DIR` | Path to Paperless consume folder (folder mode) |
@@ -114,11 +115,34 @@ Then move `recovered.pdf` into your consume folder (or upload it). Only the
 most recent failed scan is kept; older ones are pruned automatically, and
 `systemd-tmpfiles` clears `/var/tmp` after 30 days regardless.
 
+### Blank-page skip false positives
+
+`scan` used to hardcode `--swskip 20` (discard any page-side under 20% dark
+pixels, meant to drop truly-blank duplex backsides). Confirmed on a real
+document that this also drops legitimate pages: a signature page — mostly
+white, just a signature and a couple of printed lines — was under 20% ink
+coverage, so the SANE `fujitsu` backend discarded it *before* `scan` ever
+saw an image for it. There's no captured file to recover and nothing in
+the log by default — the batch just quietly ends up short, and the ADF's
+subsequent attempt to keep going surfaces as a misleading "Document feeder
+out of documents" once the tray is genuinely empty.
+
+`SWSKIP` now defaults to `0` (disabled) for exactly this reason — a false
+positive here is silent, unrecoverable data loss, which is worse than an
+occasional true-blank backside making it into the output PDF. If you want
+it back, `scan` always runs with `SANE_DEBUG_FUJITSU=5` (quiet — only the
+skip decision logs at that level, not full USB traffic) and turns any
+discard into a `WARNING: N page-side(s) discarded as blank ...` line that
+`scan-button-poll` folds into the Apprise notification, so a bad threshold
+is visible immediately instead of silent. Raise `SWSKIP` only after
+measuring real ink coverage across your own documents' blank backsides —
+don't guess a number.
+
 ### Scanner options (in `scan`)
 
 | Option | Value | Purpose |
 |--------|-------|---------|
-| `--swskip` | 20% | Skip blank pages |
+| `--swskip` | `$SWSKIP` (default 0%) | Skip blank pages — see [Blank-page skip false positives](#blank-page-skip-false-positives) |
 | `--swcrop` | yes | Auto-crop borders |
 | `--swdespeck` | 2 | Remove small artifacts |
 | `--overscan` | On | Better feed handling |
